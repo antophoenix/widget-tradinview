@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mercati oggi</title>
+<meta name="description" content="Dashboard dei mercati: indici, futures, bond, forex, grafico, calendario economico e heatmap.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  /* Stile: modern-pro-dark (financial-ui-styles). Solo token semantici. */
+  :root, :root[data-theme="dark"] {
+    --surface:          13 13 16;
+    --surface-elevated: 22 22 26;
+    --surface-panel:    32 32 38;
+    --surface-hover:    42 42 50;
+    --text-primary:   240 240 245;
+    --text-secondary: 180 180 192;
+    --text-muted:     125 125 140;
+    --positive: 34 197 94;
+    --negative: 239 68 68;
+    --warning:  251 191 36;
+    --accent:   0 143 250;
+    --border:   255 255 255;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+    color-scheme: dark;
+  }
+  :root[data-theme="light"] {
+    --surface:          248 249 251;
+    --surface-elevated: 255 255 255;
+    --surface-panel:    241 243 245;
+    --surface-hover:    233 236 239;
+    --text-primary:   28 32 36;
+    --text-secondary: 82 90 102;
+    --text-muted:     110 118 130;
+    --positive: 22 163 74;
+    --negative: 220 38 38;
+    --warning:  180 120 0;
+    --accent:   0 120 215;
+    --border:   0 0 0;
+    color-scheme: light;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: rgb(var(--surface));
+    color: rgb(var(--text-primary));
+    font: 400 13px/1.45 "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: "Geist Mono", ui-monospace, "SFMono-Regular", Menlo, monospace; }
+
+  /* Header */
+  .topbar {
+    display: flex; align-items: center; gap: 24px;
+    padding: 0 24px; min-height: 56px;
+    border-bottom: 1px solid rgb(var(--border) / .10);
+    background: rgb(var(--surface-elevated));
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; white-space: nowrap; }
+  .brand h1 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+  .brand span { color: rgb(var(--text-muted)); font-size: 12px; }
+
+  .sessions { display: flex; gap: 20px; margin-left: auto; overflow-x: auto; scrollbar-width: none; }
+  .sessions::-webkit-scrollbar { display: none; }
+  .session { display: grid; grid-template-columns: auto auto; column-gap: 8px; align-items: baseline; white-space: nowrap; }
+  .session .name { color: rgb(var(--text-secondary)); font-size: 12px; }
+  .session .time { font-size: 12px; color: rgb(var(--text-primary)); text-align: right; }
+  .session .state { grid-column: 1 / -1; display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: rgb(var(--text-muted)); }
+  .session .state::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: rgb(var(--text-muted) / .6); }
+  .session[data-open="true"] .state { color: rgb(var(--positive)); }
+  .session[data-open="true"] .state::before { background: rgb(var(--positive)); }
+
+  .icon-btn {
+    display: inline-grid; place-items: center; width: 32px; height: 32px; flex: none;
+    border: 1px solid rgb(var(--border) / .15); border-radius: var(--radius-md);
+    background: transparent; color: rgb(var(--text-secondary)); cursor: pointer;
+    transition: background-color 120ms;
+  }
+  .icon-btn:hover { background: rgb(var(--surface-hover) / .6); color: rgb(var(--text-primary)); }
+  :focus-visible { outline: 2px solid rgb(var(--accent)); outline-offset: 2px; box-shadow: 0 0 0 6px rgb(var(--accent) / .18); }
+
+  .tape { border-bottom: 1px solid rgb(var(--border) / .10); min-height: 46px; }
+
+  /* Griglia */
+  main {
+    display: grid; gap: 16px; padding: 16px 24px 24px;
+    grid-template-columns: minmax(0, 1.65fr) minmax(340px, 1fr);
+    grid-template-areas: "chart quotes" "lower lower";
+    max-width: 1680px; margin: 0 auto;
+  }
+  .panel {
+    background: rgb(var(--surface-elevated));
+    border: 1px solid rgb(var(--border) / .10);
+    border-radius: var(--radius-lg);
+    display: flex; flex-direction: column; min-width: 0; overflow: hidden;
+  }
+  .panel-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 0 16px; min-height: 44px;
+    border-bottom: 1px solid rgb(var(--border) / .10);
+  }
+  .panel-head h2 { margin: 0; font-size: 14px; font-weight: 600; }
+  .panel-head .note { color: rgb(var(--text-muted)); font-size: 12px; }
+  .chart   { grid-area: chart; }
+  .quotes  { grid-area: quotes; }
+  .lower   { grid-area: lower; }
+  .widget  { flex: 1 0 auto; position: relative; }
+  .chart .widget  { height: 560px; }
+  .quotes .widget { height: 560px; }
+  .lower .widget  { height: 520px; }
+
+  /* Tab a sottolineatura (mai pill) */
+  .tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; align-self: stretch; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab {
+    appearance: none; background: none; border: 0; cursor: pointer;
+    padding: 0 10px; font: inherit; font-size: 12px; white-space: nowrap;
+    color: rgb(var(--text-muted));
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+    transition: color 120ms;
+  }
+  .tab:hover { color: rgb(var(--text-primary)); }
+  .tab[aria-selected="true"] { color: rgb(var(--text-primary)); border-bottom-color: rgb(var(--accent)); }
+  .tab .mono { font-size: 11px; color: inherit; opacity: .75; margin-left: 4px; }
+
+  .fallback {
+    position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center;
+    color: rgb(var(--text-muted)); font-size: 12px;
+  }
+  .widget:has(iframe) .fallback { display: none; }
+
+  footer { padding: 0 24px 24px; color: rgb(var(--text-muted)); font-size: 11px; max-width: 1680px; margin: 0 auto; }
+  footer a { color: rgb(var(--text-secondary)); }
+
+  @media (max-width: 1100px) {
+    main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "chart" "quotes" "lower"; }
+    .sessions { gap: 14px; }
+  }
+  @media (max-width: 720px) {
+    .topbar { padding: 8px 16px; flex-wrap: wrap; gap: 10px; }
+    .sessions { order: 3; width: 100%; margin-left: 0; }
+    .icon-btn { margin-left: auto; }
+    main { padding: 12px 16px 16px; gap: 12px; }
+    .panel-head { flex-wrap: wrap; padding: 8px 12px 0; }
+    .panel-head .tabs { width: 100%; min-height: 36px; }
+    .chart .widget { height: 420px; }
+    .quotes .widget { height: 520px; }
+    .lower .widget { height: 460px; }
+    footer { padding: 0 16px 16px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><h1>Mercati oggi</h1><span id="today"></span></div>
+  <div class="sessions" id="sessions" aria-label="Orari delle borse"></div>
+  <button class="icon-btn" id="theme" type="button" aria-label="Passa al tema chiaro" title="Cambia tema">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+  </button>
+</header>
+
+<div class="tape widget" id="w-tape"></div>
+
+<main>
+  <section class="panel chart" aria-labelledby="h-chart">
+    <div class="panel-head">
+      <h2 id="h-chart">Grafico</h2>
+      <div class="tabs" role="tablist" aria-label="Strumento del grafico" id="chart-tabs"></div>
+    </div>
+    <div class="widget" id="w-chart"><div class="fallback">Caricamento del grafico da TradingView…</div></div>
+  </section>
+
+  <section class="panel quotes" aria-labelledby="h-quotes">
+    <div class="panel-head">
+      <h2 id="h-quotes">Riepilogo di mercato</h2>
+      <span class="note">Indici, futures, bond, forex</span>
+    </div>
+    <div class="widget" id="w-quotes"><div class="fallback">Caricamento delle quotazioni da TradingView…</div></div>
+  </section>
+
+  <section class="panel lower" aria-labelledby="h-lower">
+    <div class="panel-head">
+      <h2 id="h-lower">Contesto</h2>
+      <div class="tabs" role="tablist" aria-label="Vista" id="lower-tabs"></div>
+    </div>
+    <div class="widget" id="w-lower"><div class="fallback">Caricamento da TradingView…</div></div>
+  </section>
+</main>
+
+<footer>
+  Dati e widget forniti da <a href="https://www.tradingview.com/markets/" target="_blank" rel="noopener">TradingView</a>; alcune quotazioni possono essere in ritardo.
+  Gli orari delle borse sono quelli standard e non tengono conto delle festività.
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- Tema ----------
+  var root = document.documentElement;
+  function storedTheme() { try { return localStorage.getItem("mo-theme"); } catch (e) { return null; } }
+  function saveTheme(t) { try { localStorage.setItem("mo-theme", t); } catch (e) {} }
+  var theme = storedTheme() ||
+    (window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+  root.setAttribute("data-theme", theme);
+
+  var themeBtn = document.getElementById("theme");
+  function labelThemeBtn() {
+    themeBtn.setAttribute("aria-label", theme === "dark" ? "Passa al tema chiaro" : "Passa al tema scuro");
+  }
+  labelThemeBtn();
+  themeBtn.addEventListener("click", function () {
+    theme = theme === "dark" ? "light" : "dark";
+    root.setAttribute("data-theme", theme);
+    saveTheme(theme);
+    labelThemeBtn();
+    renderAll();
+  });
+
+  // ---------- Widget TradingView ----------
+  var BASE = "https://s3.tradingview.com/external-embedding/";
+  function mount(id, script, config, fallbackText) {
+    var host = document.getElementById(id);
+    host.innerHTML = "";
+    var box = document.createElement("div");
+    box.className = "tradingview-widget-container";
+    box.style.height = "100%";
+    box.style.width = "100%";
+    var inner = document.createElement("div");
+    inner.className = "tradingview-widget-container__widget";
+    inner.style.height = "100%";
+    box.appendChild(inner);
+    var s = document.createElement("script");
+    s.type = "text/javascript";
+    s.async = true;
+    s.src = BASE + script;
+    s.textContent = JSON.stringify(config);
+    box.appendChild(s);
+    host.appendChild(box);
+    if (fallbackText) {
+      var fb = document.createElement("div");
+      fb.className = "fallback";
+      fb.textContent = fallbackText;
+      host.appendChild(fb);
+    }
+  }
+
+  // La configurazione originale del widget (vedi backup/trading-view-originale.html)
+  var QUOTE_GROUPS = [
+    { name: "Indici", originalName: "Indices", symbols: [
+      { name: "FOREXCOM:SPXUSD", displayName: "S&P 500" },
+      { name: "FOREXCOM:NSXUSD", displayName: "US 100" },
+      { name: "FOREXCOM:DJI", displayName: "Dow 30" },
+      { name: "INDEX:NKY", displayName: "Nikkei 225" },
+      { name: "INDEX:DEU40", displayName: "DAX Index" },
+      { name: "FOREXCOM:UKXGBP", displayName: "UK 100" } ] },
+    { name: "Futures", originalName: "Futures", symbols: [
+      { name: "CME_MINI:ES1!", displayName: "S&P 500" },
+      { name: "CME:6E1!", displayName: "Euro" },
+      { name: "COMEX:GC1!", displayName: "Oro" },
+      { name: "NYMEX:CL1!", displayName: "Petrolio" },
+      { name: "NYMEX:NG1!", displayName: "Gas naturale" },
+      { name: "CBOT:ZC1!", displayName: "Mais" } ] },
+    { name: "Bond", originalName: "Bonds", symbols: [
+      { name: "CME:GE1!", displayName: "Eurodollar" },
+      { name: "CBOT:ZB1!", displayName: "T-Bond" },
+      { name: "CBOT:UB1!", displayName: "Ultra T-Bond" },
+      { name: "EUREX:FGBL1!", displayName: "Euro Bund" },
+      { name: "EUREX:FBTP1!", displayName: "Euro BTP" },
+      { name: "EUREX:FGBM1!", displayName: "Euro BOBL" } ] },
+    { name: "Forex", originalName: "Forex", symbols: [
+      { name: "FX:EURUSD", displayName: "EUR/USD" },
+      { name: "FX:GBPUSD", displayName: "GBP/USD" },
+      { name: "FX:USDJPY", displayName: "USD/JPY" },
+      { name: "FX:USDCHF", displayName: "USD/CHF" },
+      { name: "FX:AUDUSD", displayName: "AUD/USD" },
+      { name: "FX:USDCAD", displayName: "USD/CAD" } ] }
+  ];
+
+  var CHART_SYMBOLS = [
+    { label: "S&P 500", code: "SPX", symbol: "FOREXCOM:SPXUSD" },
+    { label: "Nasdaq 100", code: "NDX", symbol: "FOREXCOM:NSXUSD" },
+    { label: "DAX", code: "DAX", symbol: "XETR:DAX" },
+    { label: "Oro", code: "XAU", symbol: "OANDA:XAUUSD" },
+    { label: "Petrolio", code: "WTI", symbol: "TVC:USOIL" },
+    { label: "EUR/USD", code: "EURUSD", symbol: "FX:EURUSD" },
+    { label: "Bitcoin", code: "BTC", symbol: "BITSTAMP:BTCUSD" }
+  ];
+
+  var LOWER_VIEWS = [
+    { label: "Calendario economico", render: function () {
+      mount("w-lower", "embed-widget-events.js", {
+        colorTheme: theme, isTransparent: true, width: "100%", height: "100%",
+        locale: "it", importanceFilter: "0,1", countryFilter: "us,eu,it,de,gb,jp,cn"
+      }, "Caricamento del calendario economico…");
+    }},
+    { label: "Heatmap S&P 500", render: function () {
+      mount("w-lower", "embed-widget-stock-heatmap.js", {
+        exchanges: [], dataSource: "SPX500", grouping: "sector",
+        blockSize: "market_cap_basic", blockColor: "change", locale: "it",
+        symbolUrl: "", colorTheme: theme, hasTopBar: false, isDataSetEnabled: false,
+        isZoomEnabled: true, hasSymbolTooltip: true, isMonoSize: false,
+        isTransparent: true, width: "100%", height: "100%"
+      }, "Caricamento della heatmap…");
+    }},
+    { label: "Cambi incrociati", render: function () {
+      mount("w-lower", "embed-widget-forex-cross-rates.js", {
+        width: "100%", height: "100%",
+        currencies: ["EUR", "USD", "JPY", "GBP", "CHF", "AUD", "CAD"],
+        isTransparent: true, colorTheme: theme, locale: "it"
+      }, "Caricamento dei cambi…");
+    }}
+  ];
+
+  var chartIndex = 0, lowerIndex = 0;
+
+  function renderTape() {
+    mount("w-tape", "embed-widget-ticker-tape.js", {
+      symbols: [
+        { proName: "FOREXCOM:SPXUSD", title: "S&P 500" },
+        { proName: "FOREXCOM:NSXUSD", title: "US 100" },
+        { proName: "INDEX:DEU40", title: "DAX" },
+        { proName: "FX:EURUSD", title: "EUR/USD" },
+        { proName: "OANDA:XAUUSD", title: "Oro" },
+        { proName: "TVC:USOIL", title: "Petrolio" },
+        { proName: "BITSTAMP:BTCUSD", title: "Bitcoin" }
+      ],
+      showSymbolLogo: true, isTransparent: true, displayMode: "adaptive",
+      colorTheme: theme, locale: "it"
+    });
+  }
+  function renderChart() {
+    mount("w-chart", "embed-widget-advanced-chart.js", {
+      autosize: true, symbol: CHART_SYMBOLS[chartIndex].symbol, interval: "D",
+      timezone: "Europe/Rome", theme: theme, style: "1", locale: "it",
+      backgroundColor: theme === "dark" ? "rgba(22, 22, 26, 1)" : "rgba(255, 255, 255, 1)",
+      gridColor: theme === "dark" ? "rgba(255, 255, 255, 0.04)" : "rgba(0, 0, 0, 0.05)",
+      hide_side_toolbar: false, allow_symbol_change: true, calendar: false,
+      support_host: "https://www.tradingview.com"
+    }, "Caricamento del grafico da TradingView…");
+  }
+  function renderQuotes() {
+    mount("w-quotes", "embed-widget-market-quotes.js", {
+      width: "100%", height: "100%", symbolsGroups: QUOTE_GROUPS,
+      showSymbolLogo: true, isTransparent: true, colorTheme: theme, locale: "it"
+    }, "Caricamento delle quotazioni da TradingView…");
+  }
+  function renderAll() {
+    renderTape(); renderChart(); renderQuotes(); LOWER_VIEWS[lowerIndex].render();
+  }
+
+  // ---------- Tab ----------
+  function buildTabs(containerId, items, getIndex, setIndex, labelFor) {
+    var c = document.getElementById(containerId);
+    items.forEach(function (item, i) {
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "tab"; b.setAttribute("role", "tab");
+      b.innerHTML = labelFor(item);
+      b.addEventListener("click", function () {
+        if (getIndex() === i) return;
+        setIndex(i); sync();
+      });
+      b.addEventListener("keydown", function (e) {
+        if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+        var n = (i + (e.key === "ArrowRight" ? 1 : items.length - 1)) % items.length;
+        c.children[n].focus(); c.children[n].click();
+      });
+      c.appendChild(b);
+    });
+    function sync() {
+      Array.prototype.forEach.call(c.children, function (b, i) {
+        var on = i === getIndex();
+        b.setAttribute("aria-selected", on ? "true" : "false");
+        b.tabIndex = on ? 0 : -1;
+      });
+    }
+    sync();
+  }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (ch) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]; }); }
+
+  buildTabs("chart-tabs", CHART_SYMBOLS,
+    function () { return chartIndex; },
+    function (i) { chartIndex = i; renderChart(); },
+    function (s) { return esc(s.label); });
+  buildTabs("lower-tabs", LOWER_VIEWS,
+    function () { return lowerIndex; },
+    function (i) { lowerIndex = i; LOWER_VIEWS[i].render(); },
+    function (v) { return esc(v.label); });
+
+  // ---------- Orari delle borse ----------
+  var MARKETS = [
+    { name: "Milano", tz: "Europe/Rome", hours: [[9, 0, 17, 30]] },
+    { name: "Francoforte", tz: "Europe/Berlin", hours: [[9, 0, 17, 30]] },
+    { name: "Londra", tz: "Europe/London", hours: [[8, 0, 16, 30]] },
+    { name: "New York", tz: "America/New_York", hours: [[9, 30, 16, 0]] },
+    { name: "Tokyo", tz: "Asia/Tokyo", hours: [[9, 0, 11, 30], [12, 30, 15, 30]] }
+  ];
+  var sessionsEl = document.getElementById("sessions");
+  MARKETS.forEach(function (m) {
+    var el = document.createElement("div");
+    el.className = "session";
+    el.innerHTML = '<span class="name"></span><span class="time"></span><span class="state"></span>';
+    el.querySelector(".name").textContent = m.name;
+    sessionsEl.appendChild(el);
+    m.el = el;
+  });
+  function partsIn(tz, d) {
+    var p = {};
+    new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", weekday: "short", hourCycle: "h23" })
+      .formatToParts(d).forEach(function (x) { p[x.type] = x.value; });
+    return p;
+  }
+  function tick() {
+    var now = new Date();
+    document.getElementById("today").textContent =
+      new Intl.DateTimeFormat("it-IT", { weekday: "long", day: "numeric", month: "long" }).format(now);
+    MARKETS.forEach(function (m) {
+      var p = partsIn(m.tz, now);
+      var mins = (+p.hour) * 60 + (+p.minute);
+      var weekday = p.weekday !== "Sat" && p.weekday !== "Sun";
+      var open = weekday && m.hours.some(function (h) { return mins >= h[0] * 60 + h[1] && mins < h[2] * 60 + h[3]; });
+      m.el.dataset.open = open ? "true" : "false";
+      m.el.querySelector(".time").textContent = p.hour + ":" + p.minute;
+      m.el.querySelector(".state").textContent = open ? "Aperta" : "Chiusa";
+      m.el.title = m.name + ": " + m.hours.map(function (h) {
+        return String(h[0]).padStart(2, "0") + ":" + String(h[1]).padStart(2, "0") + "–" +
+               String(h[2]).padStart(2, "0") + ":" + String(h[3]).padStart(2, "0");
+      }).join(", ") + " ora locale, lun–ven";
+    });
+  }
+  tick();
+  setInterval(tick, 15000);
+
+  renderAll();
+})();
+</script>
+</body>
+</html>
